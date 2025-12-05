@@ -1,53 +1,51 @@
 {
   "schemaVersion": 1,
-  "id": "mrshulker",
+  "id": "herrshulker",
   "version": "${version}",
-  "name": "MrShulker",
-  "description": "Allows attaching items to display on the lids of your shulker boxes for better inventory management",
+  "name": "Herr Shulker",
+  "description": "Allows attaching items to display on the lids of your shulker boxes for better inventory management. A fork of MrShulker by Mr.Mindor.",
   "authors": [
-    "mrmindor"
+    "Einbrecher"
   ],
   "contributors": [
+    "Mr.Mindor (original MrShulker author)",
     "N (tnoctua)"
   ],
   "contact": {
-    "sources": "https://github.com/mrmindor/MrShulker",
-    "issues": "https://github.com/mrmindor/MrShulker/issues"
+    "homepage": "https://github.com/mrmindor/MrShulker"
   },
   "license": "GPL-3.0",
-  "icon": "assets/mrshulker/icon.png",
+  "icon": "assets/herrshulker/icon.png",
   "environment": "*",
   "entrypoints": {
     "fabric-datagen": [
-      "io.github.mrmindor.mrshulker.client.MrShulkerDataGenerator"
+      "net.tinkstav.herrshulker.client.HerrShulkerDataGenerator"
     ],
     "client": [
-      "io.github.mrmindor.mrshulker.client.MrShulkerClient"
+      "net.tinkstav.herrshulker.client.HerrShulkerClient"
     ],
     "main": [
-      "io.github.mrmindor.mrshulker.MrShulker"
+      "net.tinkstav.herrshulker.HerrShulker"
     ]
   },
   "mixins": [
-    "mrshulker.mixins.json",
+    "herrshulker.mixins.json",
     {
-      "config": "mrshulker.client.mixins.json",
+      "config": "herrshulker.client.mixins.json",
       "environment": "client"
     }
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
-    "minecraft": "${minecraft_version}",
+    "minecraft": "~1.21.10",
     "fabric-api": "*"
   },
   "custom": {
     "modmenu": {
       "links": {
-        "modmenu.github_releases" : "https://github.com/mrmindor/MrShulker/releases",
-        "modmenu.modrinth" : "https://modrinth.com/mod/mrshulker",
-        "modmenu.curseforge" : "https://www.curseforge.com/minecraft/mc-mods/mrshulker"
+        "modmenu.github" : "https://github.com/mrmindor/MrShulker"
       },
-      "update_checker": true
+      "update_checker": false
     }
   }
 }

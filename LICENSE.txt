@@ -1,4 +1,30 @@
-Copyright (c) 2025 Mr.Mindor
+Herr Shulker - A fork of MrShulker
+================================================================================
+
+This project is a modified version of MrShulker, originally created by Mr.Mindor.
+
+Original Work:
+  Copyright (c) 2025 Mr.Mindor
+  Source: https://github.com/mrmindor/MrShulker
+
+Modifications:
+  Copyright (c) 2025 Einbrecher
+  Fork Date: December 2025
+
+  Changes from original MrShulker (v1.4.2-1.21.10):
+  - Renamed project to "Herr Shulker" (mod ID: herrshulker)
+  - Changed package from io.github.mrmindor.mrshulker to net.tinkstav.herrshulker
+  - Updated render state management for Minecraft 1.21.10 caching behavior
+  - Added MixinLayerRenderState for per-layer ItemStack capture
+  - Added MixinSpecialModelWrapper for block entity data passthrough
+  - Added IShulkerRendererLidItem interface for renderer state management
+  - Refactored MixinShulkerBoxSpecialRenderer for new render API
+  - Removed deprecated MixinItemRenderer
+  - Various bug fixes and compatibility updates
+
+Both the original work and these modifications are licensed under GPL-3.0.
+
+================================================================================
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
