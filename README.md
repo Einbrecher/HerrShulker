@@ -12,6 +12,7 @@ HerrShulker is backward compatible with both MrShulker and Shulker+. If you are 
 - Rewritten render state management for new Minecraft render API
 - Added network synchronization for server config
 - Package renamed to `net.tinkstav.herrshulker`
+- Commands renamed from `/mrshulker` to `/shulker`
 
 ## Features
 
@@ -33,20 +34,20 @@ Requires Fabric API.
 
 Commands are separated into two groups: server-side and client-side.
 
-### Server Commands (mrshulker)
+### Server Commands (/shulker)
 
 ```
-mrshulker [set|query|reset] allow_dyeing [true|false]
-mrshulker [set|query|reset] allow_per_shulker_scaling [true|false]
-mrshulker [set|query|reset] custom_scale #.#
+/shulker [set|query|reset] allow_dyeing [true|false]
+/shulker [set|query|reset] allow_per_shulker_scaling [true|false]
+/shulker [set|query|reset] custom_scale #.#
 ```
 
-### Client Commands (mrshulker_display)
+### Client Commands (/shulker_display)
 
 ```
-mrshulker_display set scale [display_context] #.#
-mrshulker_display [query|reset] scale [display_context]
-mrshulker_display [set|query|reset] show_custom_scales [true|false]
+/shulker_display set scale [display_context] #.#
+/shulker_display [query|reset] scale [display_context]
+/shulker_display [set|query|reset] show_custom_scales [true|false]
 ```
 
 **Display contexts:** firstperson_lefthand, firstperson_righthand, fixed, ground, gui, head, none, thirdperson_lefthand, thirdperson_righthand, block, default

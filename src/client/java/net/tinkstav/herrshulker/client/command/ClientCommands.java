@@ -20,7 +20,7 @@ import java.util.List;
 
 
 public class ClientCommands {
-    public static final String COMMAND_MRSHULKER = "mrshulker_display";
+    public static final String COMMAND_MRSHULKER = "shulker_display";
     public static final String SUB_COMMAND_SET = "set";
     public static final String SUB_COMMAND_SCALE = "scale";
     public static final String SUB_COMMAND_QUERY = "query";
