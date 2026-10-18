@@ -50,7 +50,9 @@ public abstract class MixinShulkerBoxBlock {
                         // Preserve existing block entity type for mod compatibility
                         BlockEntityType<?> entityType = existingData != null
                                 ? existingData.type()
-                                : BlockEntityType.SHULKER_BOX;
+                                // 26.2 removed BlockEntityType.SHULKER_BOX; the live BE's own type
+                                // is version-agnostic (BlockEntity.getType() exists on every target).
+                                : blockEntity.getType();
                         stack.set(DataComponents.BLOCK_ENTITY_DATA, TypedEntityData.of(entityType, nbt));
                     });
                 }

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "version": "${mod_version}",
+  "name": "${mod_name}",
+  "description": "${mod_description}",
+  "authors": [
+    "${mod_authors}"
+  ],
+  "contributors": [],
+  "contact": {
+    "homepage": "https://github.com/Einbrecher/BrecherShulker-Multiloader"
+  },
+  "license": "${mod_license}",
+  "mixins": [
+    "${mixin_config_filename}",
+    {
+      "config": "${client_mixin_config_filename}",
+      "environment": "client"
+    }
+  ],
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "net.tinkstav.herrshulker.HerrShulker"
+    ],
+    "client": [
+      "net.tinkstav.herrshulker.client.HerrShulkerClient"
+    ],
+    "fabric-datagen": [
+      "net.tinkstav.herrshulker.client.HerrShulkerDataGenerator"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=${fabric_loader_version}",
+    "minecraft": "${minecraft_depends}",
+    "java": ">=${java_version}",
+    "fabric-api": "*"
+  }
+}

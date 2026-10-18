@@ -13,6 +13,9 @@ import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemContainerContents;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.storage.TagValueOutput;
@@ -92,9 +95,17 @@ public abstract class MixinAnvilMenu extends ItemCombinerMenu {
                     nbt.merge(output.buildResult());
 
                     // Preserve existing block entity type for mod compatibility
-                    BlockEntityType<?> entityType = blockComponent != null
-                            ? blockComponent.type()
-                            : BlockEntityType.SHULKER_BOX;
+                    BlockEntityType<?> entityType;
+                    if (blockComponent != null) {
+                        entityType = blockComponent.type();
+                    } else {
+                        // 26.2 removed BlockEntityType.SHULKER_BOX; derive it from the shulker
+                        // block itself (newBlockEntity + getType() exist on every target).
+                        Block shulkerBlock = ((BlockItem) result.getItem()).getBlock();
+                        entityType = ((EntityBlock) shulkerBlock)
+                                .newBlockEntity(BlockPos.ZERO, shulkerBlock.defaultBlockState())
+                                .getType();
+                    }
                     result.set(DataComponents.BLOCK_ENTITY_DATA, TypedEntityData.of(entityType, nbt));
                 });
                 if (nameIsChanging) {

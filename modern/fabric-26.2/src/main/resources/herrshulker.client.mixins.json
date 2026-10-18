@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "${client_mixin_package}",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "ItemStackRenderStateAccessor",
+    "LayerRenderStateAccessor",
+    "MixinLayerRenderState",
+    "MixinShulkerBoxRenderer",
+    "MixinShulkerBoxRenderState",
+    "MixinShulkerBoxSpecialRenderer",
+    "MixinSpecialModelWrapper"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

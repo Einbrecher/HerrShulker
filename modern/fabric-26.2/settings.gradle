@@ -1,0 +1,20 @@
+pluginManagement {
+    repositories {
+        maven { url = 'https://maven.fabricmc.net/' }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    // Pinned independently from the root build's `fabric-loom 1.13.3` because
+    // Loom 1.16+ requires Gradle 9.4+, which ForgeGradle 6 in the root build
+    // rejects. Both pins are intentional; see modern-orchestration.gradle for
+    // why modern siblings live as separate Gradle builds.
+    plugins {
+        id 'net.fabricmc.fabric-loom' version '1.16.2'
+    }
+}
+
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+rootProject.name = 'fabric-26.1'

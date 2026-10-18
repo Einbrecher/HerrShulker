@@ -1,0 +1,5 @@
+plugins {
+    id 'net.fabricmc.fabric-loom'
+}
+
+apply from: file('../../gradle/modern-conventions/fabric-26x-convention.gradle')
