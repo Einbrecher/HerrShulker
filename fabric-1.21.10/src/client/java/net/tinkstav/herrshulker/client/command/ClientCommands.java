@@ -20,7 +20,7 @@ import java.util.List;
 
 
 public class ClientCommands {
-    public static final String COMMAND_MRSHULKER = "shulker_display";
+    public static final String COMMAND_HERRSHULKER = "shulker_display";
     public static final String SUB_COMMAND_SET = "set";
     public static final String SUB_COMMAND_SCALE = "scale";
     public static final String SUB_COMMAND_QUERY = "query";
@@ -46,7 +46,7 @@ public class ClientCommands {
     public static void registerClientCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandBuildContext ignoredCommandBuildContext) {
 
         HerrShulker.LOGGER.info("logging client side commands");
-        var builder = ClientCommandManager.literal(COMMAND_MRSHULKER)
+        var builder = ClientCommandManager.literal(COMMAND_HERRSHULKER)
                 .then(ClientCommandManager .literal(SUB_COMMAND_SET)
                     .then(ClientCommandManager .literal(SUB_COMMAND_SCALE)
                         .then(ClientCommandManager .argument(ARGUMENT_DISPLAY_CONTEXT, StringArgumentType.word())

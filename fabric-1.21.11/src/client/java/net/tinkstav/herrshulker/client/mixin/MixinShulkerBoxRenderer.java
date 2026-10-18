@@ -40,8 +40,8 @@ public abstract class MixinShulkerBoxRenderer {
         // Store lid item data in a custom interface on the render state
         if(shulkerBoxRenderState instanceof ShulkerBoxLidItemRenderState lidItemState) {
             var iShulker = IShulkerLidItem.from(shulkerBoxBlockEntity);
-            lidItemState.mrshulker$setLidItem(iShulker.getLidItem());
-            lidItemState.mrshulker$setLidItemCustomScale(iShulker.getLidItemCustomScale());
+            lidItemState.herrshulker$setLidItem(iShulker.getLidItem());
+            lidItemState.herrshulker$setLidItemCustomScale(iShulker.getLidItemCustomScale());
         }
     }
 
@@ -54,7 +54,7 @@ public abstract class MixinShulkerBoxRenderer {
             return;
         }
 
-        Optional<ItemStack> lidItem = lidItemState.mrshulker$getLidItem();
+        Optional<ItemStack> lidItem = lidItemState.herrshulker$getLidItem();
         if(lidItem.isEmpty()){
             return;
         }
@@ -86,7 +86,7 @@ public abstract class MixinShulkerBoxRenderer {
 
         var scale = HerrShulkerClient.Config.getLidItemScale("block");
         if(HerrShulker.Config.isPerShulkerScalingAllowed() && HerrShulkerClient.Config.getShowCustomScales()){
-            var customScale = lidItemState.mrshulker$getLidItemCustomScale();
+            var customScale = lidItemState.herrshulker$getLidItemCustomScale();
             scale = customScale.orElse(scale);
         }
         poseStack.scale(scale, scale, scale);
@@ -94,7 +94,7 @@ public abstract class MixinShulkerBoxRenderer {
         // Use new render state system for item rendering
         // Get the per-render-state ItemStackRenderState to avoid state corruption
         // when multiple shulker boxes are rendered in the same frame
-        ItemStackRenderState lidItemRenderState = lidItemState.mrshulker$getLidItemRenderState();
+        ItemStackRenderState lidItemRenderState = lidItemState.herrshulker$getLidItemRenderState();
         ItemModelResolver itemModelResolver = minecraftClient.getItemModelResolver();
         lidItemRenderState.clear();
         itemModelResolver.updateForTopItem(lidItemRenderState, lidItem.get(), ItemDisplayContext.FIXED, minecraftClient.level, null, 0);

@@ -15,7 +15,7 @@ import java.util.Map;
 
 public class ClientConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path CONFIG_PATH = Path.of("config", "mrshulker_client.json");
+    private static final Path CONFIG_PATH = Path.of("config", "herrshulker_client.json");
     public static final float DEFAULT_DEFAULT_SCALE = 0.5f;
     public static final float DEFAULT_GUI_SCALE = 0.75f;
     public static final boolean DEFAULT_SHOW_CUSTOM_SCALES = true;

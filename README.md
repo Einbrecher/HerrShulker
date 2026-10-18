@@ -5,7 +5,7 @@ Attach an item to the lid of a shulker box so you can see what it holds. This is
 
 This repository publishes the complete source of the released versions of Herr Shulker.
 Each release tag (`vX.Y.Z`) holds the source of that version. This commit is
-**1.5.9** (Minecraft 26.1.x, published 2026-06-02).
+**1.5.11** (Minecraft 26.1.2, published 2026-06-11).
 
 ## Building
 
@@ -15,8 +15,8 @@ The version number normally comes from the development repository's git history,
 explicitly when you build from this repository:
 
 ```bash
-BRECHER_VERSION_OVERRIDE=1.5.9 ./gradlew build                                          # 1.21.10 and 1.21.11
-(cd modern/fabric-26.1 && BRECHER_VERSION_OVERRIDE=1.5.9 ./gradlew build)               # 26.1.x
+BRECHER_VERSION_OVERRIDE=1.5.11 ./gradlew build                                          # 1.21.10 and 1.21.11
+(cd modern/fabric-26.1 && BRECHER_VERSION_OVERRIDE=1.5.11 ./gradlew build)               # 26.1.x
 ```
 
 Jars are written to each target's `build/libs/`.

@@ -21,7 +21,7 @@ import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 
 public class ServerCommands {
-    public static final String COMMAND_MRSHULKER = "shulker";
+    public static final String COMMAND_HERRSHULKER = "shulker";
     public static final String SUB_COMMAND_SET = "set";
 
     public static final String SUB_COMMAND_QUERY = "query";
@@ -33,7 +33,7 @@ public class ServerCommands {
     public static final String ARGUMENT_ALLOWANCE = "allowance";
     public static final String ARGUMENT_SCALE = "scale";
     public static void registerServerCommands(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext commandBuildContext, Commands.CommandSelection environment) {
-        var builder = Commands.literal(COMMAND_MRSHULKER)
+        var builder = Commands.literal(COMMAND_HERRSHULKER)
                 .then(Commands.literal(SUB_COMMAND_SET)
                     .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                     .then(Commands.literal(SUB_COMMAND_ALLOW_DYEING)

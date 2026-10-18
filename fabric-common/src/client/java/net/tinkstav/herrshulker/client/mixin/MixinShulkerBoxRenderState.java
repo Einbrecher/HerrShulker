@@ -13,10 +13,10 @@ import java.util.Optional;
 public class MixinShulkerBoxRenderState implements ShulkerBoxLidItemRenderState {
 
     @Unique
-    private Optional<ItemStack> mrshulker$lidItem = Optional.empty();
+    private Optional<ItemStack> herrshulker$lidItem = Optional.empty();
 
     @Unique
-    private Optional<Float> mrshulker$lidItemCustomScale = Optional.empty();
+    private Optional<Float> herrshulker$lidItemCustomScale = Optional.empty();
 
     /**
      * Each ShulkerBoxRenderState has its own ItemStackRenderState for the lid item.
@@ -25,30 +25,30 @@ public class MixinShulkerBoxRenderState implements ShulkerBoxLidItemRenderState 
      * they would all show the same (last) item.
      */
     @Unique
-    private final ItemStackRenderState mrshulker$lidItemRenderState = new ItemStackRenderState();
+    private final ItemStackRenderState herrshulker$lidItemRenderState = new ItemStackRenderState();
 
     @Override
-    public Optional<ItemStack> mrshulker$getLidItem() {
-        return mrshulker$lidItem;
+    public Optional<ItemStack> herrshulker$getLidItem() {
+        return herrshulker$lidItem;
     }
 
     @Override
-    public void mrshulker$setLidItem(Optional<ItemStack> lidItem) {
-        this.mrshulker$lidItem = lidItem;
+    public void herrshulker$setLidItem(Optional<ItemStack> lidItem) {
+        this.herrshulker$lidItem = lidItem;
     }
 
     @Override
-    public Optional<Float> mrshulker$getLidItemCustomScale() {
-        return mrshulker$lidItemCustomScale;
+    public Optional<Float> herrshulker$getLidItemCustomScale() {
+        return herrshulker$lidItemCustomScale;
     }
 
     @Override
-    public void mrshulker$setLidItemCustomScale(Optional<Float> scale) {
-        this.mrshulker$lidItemCustomScale = scale;
+    public void herrshulker$setLidItemCustomScale(Optional<Float> scale) {
+        this.herrshulker$lidItemCustomScale = scale;
     }
 
     @Override
-    public ItemStackRenderState mrshulker$getLidItemRenderState() {
-        return mrshulker$lidItemRenderState;
+    public ItemStackRenderState herrshulker$getLidItemRenderState() {
+        return herrshulker$lidItemRenderState;
     }
 }

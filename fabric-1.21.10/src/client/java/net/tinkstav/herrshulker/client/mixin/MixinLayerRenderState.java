@@ -24,7 +24,7 @@ public class MixinLayerRenderState {
      * This avoids conflicts with the shared renderer instance.
      */
     @Unique @Nullable
-    private ItemStack mrshulker$capturedStack;
+    private ItemStack herrshulker$capturedStack;
 
     /**
      * Per-layer ItemStackRenderState for rendering lid items.
@@ -33,23 +33,23 @@ public class MixinLayerRenderState {
      * Lazily initialized to avoid infinite recursion during class loading.
      */
     @Unique
-    private ItemStackRenderState mrshulker$lidItemRenderState;
+    private ItemStackRenderState herrshulker$lidItemRenderState;
 
     @Unique
     private ItemStackRenderState herrshulker$getLidItemRenderState() {
-        if (mrshulker$lidItemRenderState == null) {
-            mrshulker$lidItemRenderState = new ItemStackRenderState();
+        if (herrshulker$lidItemRenderState == null) {
+            herrshulker$lidItemRenderState = new ItemStackRenderState();
         }
-        return mrshulker$lidItemRenderState;
+        return herrshulker$lidItemRenderState;
     }
 
     @Inject(method = "setupSpecialModel", at = @At("RETURN"))
     public <T> void setupShulkerBoxSpecialRenderer(SpecialModelRenderer<T> specialModelRenderer, T object, CallbackInfo ci) {
         if (specialModelRenderer instanceof IShulkerRendererLidItem iShulkerRendererLidItem) {
             // Capture the stack from the renderer into our unique field on this LayerRenderState
-            this.mrshulker$capturedStack = iShulkerRendererLidItem.getStack();
+            this.herrshulker$capturedStack = iShulkerRendererLidItem.getStack();
         } else {
-            this.mrshulker$capturedStack = null;
+            this.herrshulker$capturedStack = null;
         }
     }
 
@@ -57,7 +57,7 @@ public class MixinLayerRenderState {
     void submit(PoseStack poseStack, SubmitNodeCollector submitNodeCollector, int i, int j, int k, CallbackInfo ci) {
         if (this.specialRenderer != null && (this.specialRenderer instanceof IShulkerRendererLidItem iShulkerRendererLidItem)) {
             // Restore the captured stack to the renderer just before submit
-            iShulkerRendererLidItem.setStack(this.mrshulker$capturedStack);
+            iShulkerRendererLidItem.setStack(this.herrshulker$capturedStack);
             // Pass our per-layer render state to the renderer to avoid state corruption
             iShulkerRendererLidItem.setLidItemRenderState(herrshulker$getLidItemRenderState());
         }

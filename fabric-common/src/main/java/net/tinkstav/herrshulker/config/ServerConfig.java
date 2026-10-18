@@ -12,7 +12,7 @@ import java.nio.file.Path;
 
 public class ServerConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path CONFIG_PATH = Path.of("config", "mrshulker_server.json");
+    private static final Path CONFIG_PATH = Path.of("config", "herrshulker_server.json");
     private static final boolean DEFAULT_ALLOW_DYEING = true;
     private static final boolean DEFAULT_ALLOW_PER_SHULKER_SCALING = true;
     public boolean allowDyeing = true;

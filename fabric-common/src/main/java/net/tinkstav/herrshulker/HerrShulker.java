@@ -14,7 +14,7 @@ import org.slf4j.LoggerFactory;
 
 public class HerrShulker implements ModInitializer {
 
-    public static final String MOD_ID = "mrshulker";
+    public static final String MOD_ID = "herrshulker";
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     public static ServerConfig Config;
