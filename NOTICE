@@ -1,0 +1,24 @@
+Herr Shulker
+Copyright (C) 2025-2026 Einbrecher
+
+Herr Shulker is a modified version of MrShulker, originally created by Mr.Mindor.
+
+  Original work:  Copyright (C) 2025 Mr.Mindor
+                  https://github.com/mrmindor/MrShulker
+  Modifications:  Copyright (C) 2025-2026 Einbrecher
+
+Forked from MrShulker 1.4.2 in December 2025. Changes include the rename to Herr Shulker
+(mod id "herrshulker", package net.tinkstav.herrshulker), render-state updates for Minecraft
+1.21.10 and later, ports to Minecraft 1.21.11, 26.1 and 26.2, a multi-version build, lid-item
+rendering on the item form, configuration and command changes, and bug fixes.
+
+This program is free software: you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation, either version 3
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along with this program
+(see LICENSE). If not, see <https://www.gnu.org/licenses/>.

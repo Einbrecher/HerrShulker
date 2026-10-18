@@ -1,0 +1,160 @@
+version = ''
+
+// Capture rootProject.ext.resolvedModVersion as a local def so closures and
+// extension config blocks reach it through lexical scope rather than the
+// ext-extension delegate chain. Gradle 9.x is stricter about ext.x lookups
+// from inside `base{}`, `processResources{}`, etc., even with an explicit
+// rootProject receiver; the local-def capture is the idiomatic forward-safe form.
+def resolvedModVersion = rootProject.ext.resolvedModVersion
+
+// Capture mod-identity and per-loader properties as local vals at script-eval
+// time. Closures below reference these locals (not `project`) so the resulting
+// Provider chains don't capture `project` — which Gradle 9 forbids inside
+// Provider closures under configuration cache.
+def modId = project.mod_id
+def modGroupId = project.mod_group_id
+def modName = project.mod_name
+def modDescription = project.mod_description
+def modAuthors = project.mod_authors
+def modLicense = project.mod_license
+def minecraftVersion = project.minecraft_version
+def fabricLoaderVersion = project.fabric_loader_version
+def javaVersion = Integer.parseInt(project.java_version)
+
+// Template-friendly derived names. All loader resource filenames follow the
+// `${mod_id}.<suffix>` convention so a fork-and-rename only requires updating
+// mod_id (and the corresponding files in src/main/resources — see FORK-CHECKLIST.md).
+// The entrypoint class name is project-specific (no universal convention) and
+// lives literally in fabric.mod.json; only its package prefix (${mod_group_id})
+// is templated.
+def loaderSegment = 'fabric'
+// Generic, mod-id-independent resource filenames: a fork only edits mod_id in
+// gradle.properties — no physical resource-file rename needed (see FORK-CHECKLIST.md).
+def accessWidenerFilename = 'mod.accesswidener'
+def mixinConfigFilename = 'mod.mixins.json'
+def mixinPackage = "${modGroupId}.mixin".toString()
+// HerrShulker is a client+server mod with separate mixin packages per side.
+def clientMixinConfigFilename = 'mod.client.mixins.json'
+def clientMixinPackage = "${modGroupId}.client.mixin".toString()
+
+base {
+    archivesName.set(resolvedModVersion.map { v ->
+        "${modId}-${v}-${minecraftVersion}_${loaderSegment}".toString()
+    })
+}
+
+loom {
+    splitEnvironmentSourceSets()
+    mods {
+        "herrshulker" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+fabricApi {
+    configureDataGeneration {
+        client = true
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraftVersion}"
+    mappings loom.officialMojangMappings()
+
+    modImplementation "net.fabricmc:fabric-loader:${fabricLoaderVersion}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+    include(modImplementation("me.lucko:fabric-permissions-api:${project.permissions_api_version}"))
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir project(':common').file('src/main/java')
+            // HerrShulker glue identical across all Fabric MC targets. Per-version
+            // drift (renderers, network, commands) stays in each loader's src.
+            srcDir rootProject.file('fabric-common/src/main/java')
+        }
+        resources {
+            srcDir project(':common').file('src/main/resources')
+        }
+    }
+    // splitEnvironmentSourceSets() (in loom{}) created the `client` sourceset; add the
+    // shared client-side glue identical across all Fabric targets.
+    client {
+        java {
+            srcDir rootProject.file('fabric-common/src/client/java')
+        }
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(javaVersion)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = javaVersion
+}
+
+// Build the fabric.mod.json expansion map ONCE as a Provider<Map>. The same
+// Provider drives both inputs.property (cache invalidation) and expand()
+// (template substitution), making drift between declared inputs and expanded
+// values impossible by construction.
+//
+// All template-able loader resource filenames are derived from mod_id /
+// mod_group_id and exposed as expand variables so fabric.mod.json and
+// *.mixins.json can reference them by ${name} placeholders.
+def expansionProps = resolvedModVersion.map { v ->
+    [
+        mod_version            : v,
+        mod_id                 : modId,
+        mod_group_id           : modGroupId,
+        mod_name               : modName,
+        mod_description        : modDescription,
+        mod_authors            : modAuthors,
+        mod_license            : modLicense,
+        minecraft_version      : minecraftVersion,
+        java_version           : javaVersion,
+        fabric_loader_version  : fabricLoaderVersion,
+        mixin_config_filename        : mixinConfigFilename,
+        mixin_package                : mixinPackage,
+        client_mixin_config_filename : clientMixinConfigFilename,
+        client_mixin_package         : clientMixinPackage,
+        access_widener_filename      : accessWidenerFilename,
+    ]
+}
+
+// JSON-safe variant: literal newline chars in any String value would corrupt
+// JSON output (raw newlines are not allowed inside JSON string literals).
+// `\n` -> `\\n` makes the JSON valid; mod launchers display it as the literal
+// two-char sequence `\n` instead of a real newline. Use this for *.json /
+// *.mixins.json templates. Patterned after Jared's MultiLoader-Template.
+def jsonSafeExpansionProps = expansionProps.map { props ->
+    props.collectEntries { k, v ->
+        [(k): v instanceof String ? v.replace("\n", "\\\\n") : v]
+    }
+}
+
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+
+    inputs.property 'expansionProps', expansionProps
+
+    filesMatching(['fabric.mod.json', '*.mixins.json']) {
+        expand(jsonSafeExpansionProps.get())
+    }
+}
+
+jar {
+    archiveClassifier = ''
+}
+
+tasks.matching { it.name == 'sourcesJar' }.configureEach {
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}

@@ -1,0 +1,33 @@
+// Common subproject — compile-check target only. Never produces a runtime artifact;
+// its source is inlined into every loader subproject via srcDir.
+//
+// Plugin choice (net.neoforged.moddev with neoFormVersion): moddev is normally for
+// actual NeoForge mods, but its `neoFormVersion = '<mc>-<timestamp>'` form pulls
+// NeoForm-mapped Minecraft jars to the classpath without any runtime/runs setup.
+// That's exactly what common needs — a mappings-resolved MC dependency so the
+// platform-agnostic code in `common/src/main/java` can compile.
+//
+// Alternatives considered:
+//   - Direct NeoForm via a custom configuration: works but requires hand-wiring
+//     the dependency resolution that moddev does for free.
+//   - vanillagradle / Loom (no-fabric mode): adds a loader-flavored dependency
+//     graph that common explicitly wants to avoid.
+// moddev gives the smallest config surface for the "I just need MC on the
+// classpath at NeoForm mappings" use case. The neoFormVersion timestamp in
+// gradle.properties is the mappings pin.
+
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev'
+}
+
+neoForge {
+    neoFormVersion = project.neoform_version
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(Integer.parseInt(project.java_version))
+
+// common is a compile-check target only — its source is inlined into every loader
+// via srcDir, so the standalone jar is never shipped. Disable it so `build` does not
+// emit common/build/libs/common.jar into release-artifact globs (e.g. CI upload).
+tasks.named('jar') { enabled = false }

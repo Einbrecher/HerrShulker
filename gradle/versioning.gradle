@@ -1,0 +1,265 @@
+// Auto-versioning.
+//
+// Version = "${mod_major_minor}.${patch}" where patch = git rev-list --count
+// from `mod_line_anchor`..HEAD (clamped at 0 for the bump commit itself).
+//
+// Manual operations: ./gradlew initVersioning | bumpMinor | bumpMajor
+// Overrides:
+//   BRECHER_VERSION_OVERRIDE  bypasses derivation (still SemVer-validated).
+//   BRECHER_VERSION_STRICT=1  escalates derivation failure (missing anchor,
+//                             git error, parse failure) to a hard build
+//                             failure instead of falling back to "X.Y.0".
+//
+// COMPLEXITY NOTE: the Provider/ValueSource machinery below is written to be
+// configuration-cache-safe, but the configuration cache is NOT currently enabled
+// (no `org.gradle.configuration-cache` in gradle.properties; the modern sibling is
+// even invoked with --no-configuration-cache). The CC-safety is deliberate
+// forward-proofing for a future opt-in, NOT load-bearing today — don't treat it as
+// a hard constraint when simplifying, but keeping it costs nothing.
+
+import java.util.regex.Pattern
+import javax.inject.Inject
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
+import org.gradle.process.ExecOperations
+
+// Strict SemVer 2.0 regex (semver.org canonical pattern).
+// Captured as local def for internal use inside task config blocks; ext mirror
+// is preserved for external readers. Gradle 9.x is stricter about ext.x lookups
+// from inside configuration blocks; local-def + ext-as-export is the idiomatic
+// forward-safe pattern (mirrored in gradle/modern-conventions/fabric-26x-convention.gradle).
+def semverRegex = ~/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
+ext.semverRegex = semverRegex
+
+// ValueSource for `git rev-list --count anchor..HEAD`. Memoized for the build
+// invocation (CC-safe), so multiple consumer .get() calls do NOT re-fork git.
+// Returns null on any failure (missing anchor, exec failure, parse failure);
+// the consumer decides fallback vs strict policy.
+abstract class GitCommitCountValueSource implements ValueSource<Integer, GitCommitCountValueSource.Params> {
+    interface Params extends ValueSourceParameters {
+        org.gradle.api.provider.Property<String> getAnchor()
+        org.gradle.api.file.DirectoryProperty getRepoDir()
+    }
+    @Inject abstract ExecOperations getExecOperations()
+
+    @Override
+    Integer obtain() {
+        def anchor = parameters.anchor.getOrNull()?.trim()
+        if (!anchor) return null
+        def repoDir = parameters.repoDir.asFile.get()
+        def stdout = new ByteArrayOutputStream()
+        try {
+            // Explicit `spec ->` parameter: Groovy closure delegation does NOT
+            // auto-resolve method calls against ExecSpec when the closure is
+            // invoked from inside an abstract class method (it does for
+            // script-level closures). Calling `commandLine ...` without a
+            // delegate target dispatches against the enclosing class and
+            // throws MissingMethodException.
+            def result = getExecOperations().exec { spec ->
+                spec.commandLine 'git', 'rev-list', '--count', "${anchor}..HEAD"
+                spec.workingDir = repoDir
+                spec.standardOutput = stdout
+                spec.errorOutput = new ByteArrayOutputStream()
+                spec.ignoreExitValue = true
+            }
+            if (result.exitValue != 0) return null
+            def text = stdout.toString('UTF-8').trim()
+            if (text.isEmpty()) return null
+            return text as int
+        } catch (Exception ignored) {
+            return null
+        }
+    }
+}
+
+// CC-safe property + env reads via Providers — replaces rootProject.findProperty()
+// captures inside the version-derivation closure (Project capture is disallowed
+// in Provider closures under configuration cache).
+def overrideProvider = providers.environmentVariable('BRECHER_VERSION_OVERRIDE').orElse('')
+def strictProvider = providers.environmentVariable('BRECHER_VERSION_STRICT').orElse('').map { it.trim() == '1' }
+def majorMinorProvider = providers.gradleProperty('mod_major_minor').orElse('0.0')
+def anchorProvider = providers.gradleProperty('mod_line_anchor').orElse('')
+
+// Single git invocation per build via the ValueSource above.
+def gitCountProvider = providers.of(GitCommitCountValueSource) {
+    parameters.anchor.set(anchorProvider)
+    parameters.repoDir.set(layout.projectDirectory)
+}
+
+// Composed version Provider. The outer providers.provider {} is non-memoizing,
+// but the only expensive operation (the git fork) lives inside gitCountProvider
+// which IS memoized per build. Re-evaluation only does cheap string ops; any
+// warn-level log lines fire once per .get(), which is intentional — repeated
+// warnings signal the breadth of the fallback's impact across tasks.
+def derivedModVersion = providers.provider {
+    def override = overrideProvider.get().trim()
+    if (override) return override
+
+    def majorMinor = majorMinorProvider.get().trim()
+    if (majorMinor.isEmpty()) majorMinor = '0.0'
+
+    def anchor = anchorProvider.get().trim()
+    def isStrict = strictProvider.get()
+    def fallback = "${majorMinor}.0".toString()
+
+    if (anchor.isEmpty()) {
+        def msg = "mod_line_anchor is not set in gradle.properties"
+        if (isStrict) throw new GradleException("Strict version mode: ${msg}.")
+        logger.warn("[versioning] ${msg}; falling back to ${fallback}")
+        return fallback
+    }
+
+    def count = gitCountProvider.getOrNull()
+    if (count == null) {
+        def msg = "git rev-list --count ${anchor}..HEAD failed (git unavailable, anchor unknown, or repo state unclear)"
+        if (isStrict) throw new GradleException("Strict version mode: ${msg}.")
+        logger.warn("[versioning] ${msg}; falling back to ${fallback}")
+        return fallback
+    }
+
+    return "${majorMinor}.${Math.max(0, count - 1)}".toString()
+}
+
+// SemVer 2.0 validation is chained into the Provider so EVERY consumer
+// (archivesName, processResources expand, manifest version) trips the check
+// at .get() time. Previously every subproject jar/remapJar had to dependsOn
+// rootProject's validateVersion task — a cross-project task dependency that
+// inflated the task graph and coupled all loaders to a root-task lifecycle.
+def resolvedModVersion = derivedModVersion.map { v ->
+    if (!(v ==~ semverRegex)) {
+        throw new GradleException(
+            "Resolved mod version '${v}' is not strict SemVer 2.0.\n" +
+            "Check mod_major_minor / mod_line_anchor in gradle.properties, or the BRECHER_VERSION_OVERRIDE env var."
+        )
+    }
+    return v
+}
+ext.resolvedModVersion = resolvedModVersion
+
+// validateVersion remains as an explicit `./gradlew validateVersion` entry
+// point — useful for printing the resolved version in CI or scripts. The
+// .get() call below triggers the .map validation; no manual regex check
+// needed here.
+tasks.register('validateVersion') {
+    group = 'verification'
+    description = 'Print the resolved mod version (and trigger SemVer 2.0 validation).'
+
+    inputs.property('resolvedVersion', resolvedModVersion)
+
+    doLast {
+        logger.lifecycle("Resolved mod version: ${resolvedModVersion.get()}")
+    }
+}
+
+tasks.register('initVersioning') {
+    group = 'versioning'
+    description = 'One-time bootstrap: anchor the current minor line at HEAD.'
+
+    doLast {
+        def propsFile = rootProject.file('gradle.properties')
+        def existing = readProperty(propsFile, 'mod_line_anchor')
+        if (existing) {
+            throw new GradleException(
+                "mod_line_anchor is already set to '${existing}'.\n" +
+                "Use bumpMinor or bumpMajor to advance, or clear the line manually first."
+            )
+        }
+        def headSha = captureGit(['rev-parse', 'HEAD'])
+        if (!headSha) {
+            throw new GradleException('Could not resolve git HEAD. Is .git present?')
+        }
+        updatePropertyLine(propsFile, 'mod_line_anchor', headSha)
+        def mm = readProperty(propsFile, 'mod_major_minor') ?: '0.0'
+        logger.lifecycle("Initialized ${mm}.x line at ${headSha}.")
+        logger.lifecycle("Stage and commit gradle.properties: git add gradle.properties && git commit -m 'Initialize versioning'")
+    }
+}
+
+tasks.register('bumpMinor') {
+    group = 'versioning'
+    description = 'Increment minor (e.g. 2.6 -> 2.7) and reset the line anchor to HEAD.'
+    doLast { bumpVersion(false) }
+}
+
+tasks.register('bumpMajor') {
+    group = 'versioning'
+    description = 'Increment major (e.g. 2.6 -> 3.0) and reset the line anchor to HEAD.'
+    doLast { bumpVersion(true) }
+}
+
+ext.bumpVersion = { boolean isMajor ->
+    def propsFile = rootProject.file('gradle.properties')
+    def current = readProperty(propsFile, 'mod_major_minor')
+    if (!current) {
+        throw new GradleException('mod_major_minor is not set in gradle.properties.')
+    }
+    def parts = current.split('\\.')
+    if (parts.length != 2) {
+        throw new GradleException("mod_major_minor must be 'MAJOR.MINOR', got: '${current}'")
+    }
+    int major, minor
+    try {
+        major = parts[0] as int
+        minor = parts[1] as int
+    } catch (NumberFormatException ignored) {
+        throw new GradleException("mod_major_minor parts must be integers, got: '${current}'")
+    }
+    def newMajorMinor = isMajor ? "${major + 1}.0" : "${major}.${minor + 1}"
+
+    def headSha = captureGit('git rev-parse HEAD')
+    if (!headSha) {
+        throw new GradleException('Could not resolve git HEAD. Is .git present?')
+    }
+
+    updatePropertyLine(propsFile, 'mod_major_minor', newMajorMinor)
+    updatePropertyLine(propsFile, 'mod_line_anchor', headSha)
+
+    logger.lifecycle("Bumped to ${newMajorMinor}.x line. Anchor: ${headSha}")
+    logger.lifecycle("Stage and commit gradle.properties: git add gradle.properties && git commit -m 'Bump to ${newMajorMinor}'")
+}
+
+// Run `git <args>` and return trimmed stdout, or null on any failure.
+// Used by manual versioning ops (initVersioning, bumpMinor, bumpMajor).
+// Uses providers.exec (Gradle's CC-aware exec API) — replaces a previous
+// Groovy String.execute() call that is deprecated in Gradle 9.
+ext.captureGit = { List<String> args ->
+    try {
+        def execOutput = providers.exec {
+            commandLine(['git'] + args)
+            workingDir = rootProject.projectDir
+            ignoreExitValue = true
+        }
+        if (execOutput.result.get().exitValue != 0) return null
+        def text = execOutput.standardOutput.asText.get().trim()
+        return text.isEmpty() ? null : text
+    } catch (Exception ignored) {
+        return null
+    }
+}
+
+ext.readProperty = { File propsFile, String key ->
+    def pattern = Pattern.compile("^\\s*${Pattern.quote(key)}\\s*=(.*)\$")
+    for (line in propsFile.readLines('UTF-8')) {
+        def m = pattern.matcher(line)
+        if (m.matches()) {
+            def v = m.group(1).trim()
+            return v.isEmpty() ? null : v
+        }
+    }
+    return null
+}
+
+ext.updatePropertyLine = { File propsFile, String key, String value ->
+    def lines = propsFile.readLines('UTF-8')
+    def pattern = Pattern.compile("^\\s*${Pattern.quote(key)}\\s*=.*")
+    boolean updated = false
+    def newLines = lines.collect { line ->
+        if (pattern.matcher(line).matches()) {
+            updated = true
+            return "${key}=${value}"
+        }
+        return line
+    }
+    if (!updated) newLines.add("${key}=${value}")
+    propsFile.setText(newLines.join('\n') + '\n', 'UTF-8')
+}

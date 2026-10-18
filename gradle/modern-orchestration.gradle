@@ -1,0 +1,89 @@
+// Modern-build orchestration: discovers modern/* sibling Gradle builds (each
+// identified by its own gradlew) and registers Exec tasks that delegate to
+// their wrappers. Applied from root build.gradle. Adding a new modern sibling
+// requires creating modern/<name>/ with its own gradlew — no edits here.
+// To temporarily exclude an existing sibling, touch ".modern-disabled" in its directory.
+//
+// Order-safety: uses tasks.matching {}.configureEach {} for the build/clean
+// dependsOn wiring so the orchestration script is order-independent w.r.t.
+// when the `base` plugin (which creates build/clean) is applied.
+//
+// Scope: applied at ROOT project; tasks here refers to rootProject.tasks.
+//
+// Configuration-cache stance: the orchestration uses providers.environmentVariable
+// for env reads but consumes the value inside doFirst to keep CC-safe. The Exec
+// tasks pass --no-configuration-cache to the inner gradle so the modern
+// convention's Properties.load(file('../../gradle.properties')) pattern stays
+// simple. Inner builds are small (single subproject); CC adds little benefit
+// there.
+
+def modernRoot = rootProject.file('modern')
+def modernBuilds = modernRoot.exists() && modernRoot.isDirectory()
+    ? modernRoot.listFiles()
+          .findAll { it.isDirectory()
+                     && new File(it, 'gradlew').isFile()
+                     && !new File(it, '.modern-disabled').isFile() }
+          .sort { it.name }
+    : []
+
+// Convert sibling directory name -> a Gradle-task-safe identifier:
+//   "fabric-26.1"   -> "fabric_26_1"
+//   "neoforge-26.1" -> "neoforge_26_1"
+def safeName = { File dir -> dir.name.replaceAll('[^a-zA-Z0-9]', '_') }
+
+// Forward env via providers for CC-safety. Resolve inside doFirst so the
+// inner process sees the current env, not a configuration-cached snapshot.
+def overrideProvider = providers.environmentVariable('BRECHER_VERSION_OVERRIDE')
+    .orElse('')
+
+modernBuilds.each { File dir ->
+    def name = safeName(dir)
+
+    def buildTask = tasks.register("build_${name}", Exec) {
+        group = 'modern'
+        description = "Build the separate-build sibling subproject ${dir.name}"
+        workingDir = dir
+        commandLine './gradlew', 'build', '--no-daemon', '--no-configuration-cache'
+        // Defensive chmod — WSL2/DrvFs can lose execute bit on Windows-side edits.
+        // Env passthrough resolved at execution time (CC-safe).
+        doFirst {
+            def gradlewFile = new File(dir, 'gradlew')
+            if (!gradlewFile.canExecute()) {
+                gradlewFile.setExecutable(true, false)
+            }
+            environment 'BRECHER_VERSION_OVERRIDE', overrideProvider.get()
+        }
+    }
+
+    def cleanTask = tasks.register("clean_${name}", Exec) {
+        group = 'modern'
+        description = "Clean the separate-build sibling subproject ${dir.name}"
+        workingDir = dir
+        commandLine './gradlew', 'clean', '--no-daemon', '--no-configuration-cache'
+        doFirst {
+            def gradlewFile = new File(dir, 'gradlew')
+            if (!gradlewFile.canExecute()) {
+                gradlewFile.setExecutable(true, false)
+            }
+            environment 'BRECHER_VERSION_OVERRIDE', overrideProvider.get()
+        }
+    }
+
+    // tasks.matching is lazy and order-independent. Configures the base
+    // plugin's `build`/`clean` whenever they appear.
+    tasks.matching { it.name == 'build' }.configureEach { dependsOn buildTask }
+    tasks.matching { it.name == 'clean' }.configureEach { dependsOn cleanTask }
+}
+
+tasks.register('listModernBuilds') {
+    group = 'modern'
+    description = 'List sibling separate-build subprojects discovered under modern/'
+    doLast {
+        if (modernBuilds.isEmpty()) {
+            logger.lifecycle 'No modern sibling builds found under modern/.'
+        } else {
+            logger.lifecycle "Discovered ${modernBuilds.size()} modern sibling build(s):"
+            modernBuilds.each { logger.lifecycle "  - ${it.name} (${it.absolutePath})" }
+        }
+    }
+}

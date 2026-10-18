@@ -1,64 +1,26 @@
-# HerrShulker
+# Herr Shulker
 
-HerrShulker is a fork of [MrShulker](https://github.com/mrmindor/MrShulker) updated for Minecraft 1.21.10 compatibility.
+Attach an item to the lid of a shulker box so you can see what it holds. This is a fork of
+[MrShulker](https://github.com/mrmindor/MrShulker) by Mr.Mindor.
 
-The mod allows players to attach items to shulker boxes for 1 XP using an anvil. The attached item then appears on the lid of the shulker box.
+This repository publishes the complete source of the released versions of Herr Shulker.
+Each release tag (`vX.Y.Z`) holds the source of that version. This commit is
+**1.5.8** (Minecraft 26.1.x, published 2026-06-01).
 
-HerrShulker is backward compatible with both MrShulker and Shulker+. If you are migrating from a world with either mod, the data will carry over automatically.
+## Building
 
-## Changes from MrShulker
+Requirements: run Gradle with JDK 21 or newer (set `JAVA_HOME`). The 1.21.x targets compile for
+Java 21 and the 26.x targets for Java 25. Gradle finds or downloads those through its toolchain support.
+The version number normally comes from the development repository's git history, so set it
+explicitly when you build from this repository:
 
-- Updated to Minecraft 1.21.10
-- Rewritten render state management for new Minecraft render API
-- Added network synchronization for server config
-- Package renamed to `net.tinkstav.herrshulker`
-- Commands renamed from `/mrshulker` to `/shulker`
-
-## Features
-
-- Attach items to shulker boxes for display purposes
-- Dye shulker boxes via crouch-use
-- Client-configuration options for lid item scales in different display contexts
-- Server-configuration options to enable or disable specific mod features
-- Per-shulker lid item scaling
-- Commands to manage all settings
-
-## Requirements and Dependencies
-
-HerrShulker is required server-side to function.
-It is not required that all players have HerrShulker installed client-side, but it is required for the lid items to display.
-
-Requires Fabric API.
-
-## Commands
-
-Commands are separated into two groups: server-side and client-side.
-
-### Server Commands (/shulker)
-
-```
-/shulker [set|query|reset] allow_dyeing [true|false]
-/shulker [set|query|reset] allow_per_shulker_scaling [true|false]
-/shulker [set|query|reset] custom_scale #.#
+```bash
+BRECHER_VERSION_OVERRIDE=1.5.8 ./gradlew build                                          # 1.21.10 and 1.21.11
+(cd modern/fabric-26.1 && BRECHER_VERSION_OVERRIDE=1.5.8 ./gradlew build)               # 26.1.x
 ```
 
-### Client Commands (/shulker_display)
+Jars are written to each target's `build/libs/`.
 
-```
-/shulker_display set scale [display_context] #.#
-/shulker_display [query|reset] scale [display_context]
-/shulker_display [set|query|reset] show_custom_scales [true|false]
-```
+## License
 
-**Display contexts:** firstperson_lefthand, firstperson_righthand, fixed, ground, gui, head, none, thirdperson_lefthand, thirdperson_righthand, block, default
-
-## Lid Item Scaling Priority
-
-1. Per-shulker custom_scale (if set and both allow_per_shulker_scales and show_custom_scales are true)
-2. Display context scale for current ItemDisplayContext
-3. The 'default' display_context value as fallback
-
-## Credits
-
-- Original [MrShulker](https://github.com/mrmindor/MrShulker) by mrmindor
-- Crouch-use dyeing feature by tnoctua
+GNU General Public License v3.0 or later. See [LICENSE](LICENSE) and [NOTICE](NOTICE).

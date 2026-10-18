@@ -1,0 +1,181 @@
+// gradle/fork.gradle — one-shot fork helper.
+//
+// Re-stamp a fresh clone of this template as a new mod:
+//   ./gradlew forkRename -Pnew_group=net.example.newmod -Pnew_id=new_mod_id
+//
+// Dry-run by default (prints the plan, changes nothing). Add -Pexecute=true to apply.
+// Requires a clean git working tree so the whole rename is undoable with
+//   git checkout . && git clean -fd
+// (override with -Pforce=true). Run ONCE, right after cloning and before the first
+// fork commit; then run `./gradlew initVersioning` to re-anchor versioning.
+//
+// HerrShulker is a client+server mod, so this covers BOTH the `src/main` and
+// `src/client` source sets. Automates the mechanical fork steps templating can't reach:
+//   1. mod_group_id / mod_id in gradle.properties.
+//   2. Java package directories under every src/<set>/java root.
+//   3. The old-group and old-id strings in every src/main + src/client file — package
+//      decls, imports, the literal entrypoint FQNs in fabric.mod.json, accessor FQNs in
+//      *.mixins.json, translation keys, etc. Binary assets (e.g. icon.png) are skipped.
+//   4. ServiceLoader binding files (if any) under META-INF/services/.
+//   5. assets/<oldId>/ resource directories.
+//
+// Deliberately left for the forker to do by hand:
+//   - Entrypoint CLASS names (HerrShulker / HerrShulkerClient / HerrShulkerDataGenerator):
+//     fabric.mod.json references them by FQN which is rewritten by the group rename above,
+//     so they stay valid. Rename the classes yourself only for cosmetic alignment.
+//   - Prose in README.md / docs/.
+
+import java.nio.file.Files
+
+tasks.register('forkRename') {
+    group = 'fork'
+    description = 'Re-stamp this template clone as a new mod (package + id rename). Dry-run unless -Pexecute=true.'
+
+    doLast {
+        def oldGroup = providers.gradleProperty('mod_group_id').get().trim()
+        def oldId    = providers.gradleProperty('mod_id').get().trim()
+        def newGroup = (project.findProperty('new_group') ?: '').toString().trim()
+        def newId    = (project.findProperty('new_id') ?: '').toString().trim()
+        def execute  = project.findProperty('execute')?.toString() == 'true'
+        def force    = project.findProperty('force')?.toString() == 'true'
+
+        if (!newGroup || !newId) {
+            throw new GradleException(
+                "Usage: ./gradlew forkRename -Pnew_group=<dotted.pkg> -Pnew_id=<snake_id> [-Pexecute=true]")
+        }
+        if (!(newGroup ==~ /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/)) {
+            throw new GradleException("new_group '${newGroup}' must be a lowercase dotted Java package (e.g. net.tinkstav.shulker).")
+        }
+        if (!(newId ==~ /^[a-z][a-z0-9_]*$/)) {
+            throw new GradleException("new_id '${newId}' must be snake_case (e.g. herr_shulker).")
+        }
+        if (newGroup == oldGroup && newId == oldId) {
+            throw new GradleException("new_group/new_id match the current values — nothing to do.")
+        }
+        if (newGroup.startsWith(oldGroup + '.') || oldGroup.startsWith(newGroup + '.')) {
+            throw new GradleException("new_group must not be a parent/child of the old group (${oldGroup}).")
+        }
+
+        // Safety: only when actually applying, require a clean tree so the rename is
+        // fully undoable. A dry-run writes nothing, so it is always allowed. captureGit
+        // (from gradle/versioning.gradle) returns null on a clean tree / non-repo.
+        if (execute && !force) {
+            def dirty = captureGit(['status', '--porcelain'])
+            if (dirty) {
+                throw new GradleException(
+                    "Working tree is not clean. Commit or stash first so you can undo the rename with\n" +
+                    "  git checkout . && git clean -fd\n" +
+                    "or re-run with -Pforce=true to override.")
+            }
+        }
+
+        def oldGroupPath = oldGroup.replace('.', '/')
+        def newGroupPath = newGroup.replace('.', '/')
+        def rel = { File f -> rootDir.toPath().relativize(f.toPath()).toString() }
+
+        // ---- 1. Content replacement across all src/main + src/client TEXT files + gradle.properties ----
+        // Replace the full old-group and full old-id tokens. Neither is a substring of the
+        // other, so the two passes never collide. Binary resources (textures, sounds) are
+        // skipped — UTF-8 round-tripping them would corrupt bytes; binaries are only ever
+        // MOVED (the assets rename below). Detection: a NUL byte in the first 8 KiB.
+        def looksBinary = { File f ->
+            def len = (int) Math.min(f.length(), 8192L)
+            if (len == 0) return false
+            def buf = new byte[len]
+            int read = 0
+            f.withInputStream { ins -> int r; while (read < len && (r = ins.read(buf, read, len - read)) > 0) read += r }
+            for (int i = 0; i < read; i++) if (buf[i] == (byte) 0) return true
+            false
+        }
+        def srcFiles = fileTree(rootDir) {
+            include '**/src/main/**', '**/src/client/**'
+            exclude '**/build/**'
+        }.files.findAll { it.isFile() && !looksBinary(it) }
+        def gp = rootProject.file('gradle.properties')
+
+        def planContent = []
+        def applyContent = { File f ->
+            def text = f.getText('UTF-8')
+            def updated = text.replace(oldGroup, newGroup).replace(oldId, newId)
+            if (updated != text) {
+                if (execute) f.setText(updated, 'UTF-8')
+                planContent << rel(f)
+            }
+        }
+        srcFiles.each { applyContent(it) }
+        applyContent(gp)
+
+        // ---- 2. Java package directory moves (one per src/<set>/java root that has it) ----
+        def javaRoots = (fileTree(rootDir) {
+            include '**/src/main/java/**', '**/src/client/java/**'
+            exclude '**/build/**'
+        }.files.collect { f ->
+            def p = f.parentFile
+            while (p != null && !(p.path.replace('\\', '/') ==~ /.*\/src\/(?:main|client)\/java$/)) p = p.parentFile
+            p
+        }.findAll { it != null }).unique()
+
+        def pkgMoves = []
+        javaRoots.each { jr ->
+            def from = new File(jr, oldGroupPath)
+            if (from.isDirectory()) pkgMoves << [from: from, to: new File(jr, newGroupPath), root: jr]
+        }
+
+        // ---- 3. ServiceLoader binding file renames (filename carries the FQN) ----
+        def serviceRenames = (fileTree(rootDir) {
+            include '**/src/main/resources/META-INF/services/' + oldGroup + '.*',
+                    '**/src/client/resources/META-INF/services/' + oldGroup + '.*'
+            exclude '**/build/**'
+        }.files.collect { f -> [from: f, to: new File(f.parentFile, f.name.replace(oldGroup, newGroup))] })
+
+        // ---- 4. assets/<oldId>/ directory moves ----
+        def assetMoves = ((fileTree(rootDir) {
+            include '**/src/main/resources/assets/' + oldId + '/**',
+                    '**/src/client/resources/assets/' + oldId + '/**'
+            exclude '**/build/**'
+        }.files.collect { f ->
+            def p = f.parentFile
+            while (p != null && p.name != oldId) p = p.parentFile
+            p
+        }.findAll { it != null }).unique()).collect { d -> [from: d, to: new File(d.parentFile, newId)] }
+
+        // ---- Report the plan ----
+        logger.lifecycle("[forkRename] ${execute ? 'APPLYING' : 'DRY-RUN (pass -Pexecute=true to apply)'}")
+        logger.lifecycle("  mod_group_id: ${oldGroup}  ->  ${newGroup}")
+        logger.lifecycle("  mod_id:       ${oldId}  ->  ${newId}")
+        logger.lifecycle("  content edits: ${planContent.size()} file(s)")
+        logger.lifecycle("  package moves: ${pkgMoves.size()}")
+        pkgMoves.each { logger.lifecycle("    ${rel(it.from)}  ->  ${rel(it.to)}") }
+        logger.lifecycle("  service renames: ${serviceRenames.size()}")
+        serviceRenames.each { logger.lifecycle("    ${rel(it.from)}  ->  ${rel(it.to)}") }
+        logger.lifecycle("  assets moves: ${assetMoves.size()}")
+        assetMoves.each { logger.lifecycle("    ${rel(it.from)}  ->  ${rel(it.to)}") }
+
+        if (!execute) {
+            logger.lifecycle("[forkRename] No changes written. Re-run with -Pexecute=true to apply.")
+            return
+        }
+
+        // ---- Apply file/dir moves (content already written above) ----
+        def cleanupEmptyParents = { File start, File stopAt ->
+            def d = start
+            while (d != null && d.path != stopAt.path && d.isDirectory() && (d.list()?.length ?: 0) == 0) {
+                d.delete(); d = d.parentFile
+            }
+        }
+        pkgMoves.each { m ->
+            Files.createDirectories(m.to.parentFile.toPath())
+            Files.move(m.from.toPath(), m.to.toPath())
+            cleanupEmptyParents(m.from.parentFile, m.root)
+        }
+        serviceRenames.each { r -> Files.move(r.from.toPath(), r.to.toPath()) }
+        assetMoves.each { a -> Files.move(a.from.toPath(), a.to.toPath()) }
+
+        logger.lifecycle("[forkRename] Done. Next steps:")
+        logger.lifecycle("  1. Edit gradle.properties prose: mod_name / mod_description / mod_authors / mod_license.")
+        logger.lifecycle("  2. Update README.md and any docs/ prose by hand.")
+        logger.lifecycle("  3. (optional) Rename entrypoint classes (HerrShulker*) for cosmetic alignment.")
+        logger.lifecycle("  4. git add -A && git commit, then ./gradlew initVersioning to anchor the version line.")
+        logger.lifecycle("  5. ./gradlew clean build validateVersion  to confirm the fork compiles.")
+    }
+}

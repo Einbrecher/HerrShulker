@@ -1,0 +1,342 @@
+// Convention for modern Fabric sibling builds (Loom 1.16+, Gradle 9.4+, Java 25+).
+// Applied from modern/<fabric-mc>/build.gradle via:
+//   apply from: file('../../gradle/modern-conventions/fabric-26x-convention.gradle')
+//
+// Differences from gradle/fabric-convention.gradle:
+//   - Version derivation is in-build (cannot reach the parent repo's resolved mod-version Provider).
+//   - Mod identity (mod_id, mod_name, etc.) is read from ../../gradle.properties at config time.
+//   - common/ source is referenced by file('../../common/...') because modern siblings are at depth 2.
+//   - Loom 1.16+ runs DSL adds runServer task.
+//   - validateLocalVersion gates both `jar` and `remapJar` (Loom's release artifact).
+
+import java.util.Properties
+import javax.inject.Inject
+import org.gradle.api.provider.ValueSource
+import org.gradle.api.provider.ValueSourceParameters
+import org.gradle.process.ExecOperations
+
+// ---- Parent properties (single source of truth for mod identity) ----
+def parentPropsFile = file('../../gradle.properties')
+def parentProps = new Properties()
+if (parentPropsFile.exists()) {
+    parentPropsFile.withInputStream { parentProps.load(it) }
+}
+def parentProp = { String key, String required = null ->
+    def v = parentProps.getProperty(key)?.trim()
+    if (required != null && (v == null || v.isEmpty())) {
+        throw new GradleException(
+            "Modern sibling convention requires parent property '${key}' to be set in " +
+            "${parentPropsFile.absolutePath}. ${required}")
+    }
+    return v
+}
+
+// Required mod-identity properties — fail fast if any are missing/empty.
+// Defensive: parent props are the single source of truth; misalignment between
+// legacy and modern is worse than a clear startup error.
+// Captured as local def so closures/extension blocks reach the map through
+// lexical scope, not the ext/extensions delegate chain (Gradle 9.x is stricter
+// about ext lookups from inside extension configuration blocks).
+def modIdentity = [
+    mod_id              : parentProp('mod_id',           'Mod identity (mod_id) must match legacy subprojects.'),
+    mod_name            : parentProp('mod_name',         'Mod identity (mod_name) must match legacy subprojects.'),
+    mod_description     : parentProp('mod_description',  'Used by fabric.mod.json template.'),
+    mod_authors         : parentProp('mod_authors',      'Used by fabric.mod.json template.'),
+    mod_license         : parentProp('mod_license',      'Used by fabric.mod.json template.'),
+    mod_group_id        : parentProp('mod_group_id',     'Used as the Gradle group coordinate.'),
+    // Optional — only required if uses_night_config=true. parentProp without
+    // a required string returns null when missing/empty.
+    night_config_version: parentProp('night_config_version'),
+    uses_night_config   : parentProp('uses_night_config'),
+]
+ext.modIdentity = modIdentity
+
+group = modIdentity.mod_group_id
+
+// ---- Version derivation (mirrors gradle/versioning.gradle, scoped to ../../) ----
+//
+// Modern siblings cannot reach the outer rootProject's resolvedModVersion
+// Provider at config time, so we replicate the derivation here against the
+// parent repo root. The ValueSource pattern matches the legacy file: a single
+// git fork is memoized per build invocation, eliminating the multi-fork
+// behavior of the previous providers.provider {}-based derivation.
+
+abstract class GitCommitCountValueSource implements ValueSource<Integer, GitCommitCountValueSource.Params> {
+    interface Params extends ValueSourceParameters {
+        org.gradle.api.provider.Property<String> getAnchor()
+        org.gradle.api.file.DirectoryProperty getRepoDir()
+    }
+    @Inject abstract ExecOperations getExecOperations()
+
+    @Override
+    Integer obtain() {
+        def anchor = parameters.anchor.getOrNull()?.trim()
+        if (!anchor) return null
+        def repoDir = parameters.repoDir.asFile.get()
+        def stdout = new ByteArrayOutputStream()
+        try {
+            // Explicit `spec ->` parameter: Groovy closure delegation does NOT
+            // auto-resolve method calls against ExecSpec when the closure is
+            // invoked from inside an abstract class method.
+            def result = getExecOperations().exec { spec ->
+                spec.commandLine 'git', 'rev-list', '--count', "${anchor}..HEAD"
+                spec.workingDir = repoDir
+                spec.standardOutput = stdout
+                spec.errorOutput = new ByteArrayOutputStream()
+                spec.ignoreExitValue = true
+            }
+            if (result.exitValue != 0) return null
+            def text = stdout.toString('UTF-8').trim()
+            if (text.isEmpty()) return null
+            return text as int
+        } catch (Exception ignored) {
+            return null
+        }
+    }
+}
+
+def overrideProvider = providers.environmentVariable('BRECHER_VERSION_OVERRIDE').orElse('')
+def strictProvider = providers.environmentVariable('BRECHER_VERSION_STRICT').orElse('').map { it.trim() == '1' }
+def majorMinorValue = parentProp('mod_major_minor') ?: '0.0'
+def anchorValue = parentProp('mod_line_anchor') ?: ''
+def parentRootDir = file('../../')
+
+def gitCountProvider = providers.of(GitCommitCountValueSource) {
+    parameters.anchor.set(anchorValue)
+    parameters.repoDir.set(parentRootDir)
+}
+
+def derivedLocalModVersion = providers.provider {
+    def override = overrideProvider.get().trim()
+    if (override) return override
+
+    def isStrict = strictProvider.get()
+    def fallback = "${majorMinorValue}.0".toString()
+
+    if (anchorValue.isEmpty()) {
+        def msg = "mod_line_anchor is not set in ${parentPropsFile.absolutePath}"
+        if (isStrict) throw new GradleException("Strict version mode: ${msg}.")
+        logger.warn("[versioning] ${msg}; falling back to ${fallback}")
+        return fallback
+    }
+
+    def count = gitCountProvider.getOrNull()
+    if (count == null) {
+        def msg = "git rev-list --count ${anchorValue}..HEAD failed (git unavailable, anchor unknown, or repo state unclear)"
+        if (isStrict) throw new GradleException("Strict version mode: ${msg}.")
+        logger.warn("[versioning] ${msg}; falling back to ${fallback}")
+        return fallback
+    }
+
+    return "${majorMinorValue}.${Math.max(0, count - 1)}".toString()
+}
+
+// SYNC RULE: This SemVer 2.0 regex MUST stay byte-identical to the `semverRegex`
+// local def in gradle/versioning.gradle. Modern siblings cannot reach the root
+// project's regex at config time, so both files own copies. If either is edited,
+// edit the other in the same commit. Spot-check:
+//   diff <(sed -n '/^def semverRegex/p' gradle/versioning.gradle) \
+//        <(sed -n '/^def SEMVER_REGEX/p' gradle/modern-conventions/fabric-26x-convention.gradle)
+def SEMVER_REGEX = ~/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
+
+// SemVer 2.0 validation is chained into localResolvedModVersion via .map so
+// every consumer (archivesName, processResources expand, manifest version)
+// trips the check at .get() time — no separate validateLocalVersion dependsOn
+// edge needed on jar/remapJar.
+def localResolvedModVersion = derivedLocalModVersion.map { v ->
+    if (!(v ==~ SEMVER_REGEX)) {
+        throw new GradleException(
+            "Resolved sibling mod version '${v}' is not strict SemVer 2.0.\n" +
+            "Check mod_major_minor / mod_line_anchor in ../../gradle.properties, " +
+            "or the BRECHER_VERSION_OVERRIDE env var.")
+    }
+    return v
+}
+ext.localResolvedModVersion = localResolvedModVersion
+
+version = ''
+
+// Capture per-sibling properties as locals to avoid project capture in closures.
+def minecraftVersion = project.minecraft_version
+// fabric.mod.json `minecraft` depends predicate. Decoupled from the COMPILE version on purpose: we
+// build/test against the exact patch (e.g. 26.1.2) but accept the whole minor series at install time.
+// Default = "~<major.minor>" (Fabric tilde on 2 components => >=major.minor.0 <major.(minor+1).0).
+// Cross-version bytecode analysis confirmed the lid-item fix's binding surface + routing contract are
+// identical across 26.1 / 26.1.1 / 26.1.2 (see docs/pipeline-runs/.../26x-cross-version-compat-
+// investigation.md). Override via the `minecraft_depends` gradle property for a different range.
+def mcMajorMinor = (minecraftVersion =~ /^(\d+\.\d+)/)[0][1]
+def minecraftDepends = project.findProperty('minecraft_depends') ?: ('~' + mcMajorMinor)
+def fabricLoaderVersion = project.fabric_loader_version
+def fabricApiVersion = project.fabric_api_version
+def javaVersion = Integer.parseInt(project.java_version)
+
+// Template-friendly derived names (mirrors gradle/fabric-convention.gradle).
+def loaderSegment = 'fabric'
+// Generic, mod-id-independent resource filenames (mirrors gradle/fabric-convention.gradle).
+def accessWidenerFilename = 'mod.accesswidener'
+def mixinConfigFilename = 'mod.mixins.json'
+def mixinPackage = "${modIdentity.mod_group_id}.mixin".toString()
+// HerrShulker is a client+server mod with separate mixin packages per side.
+def clientMixinConfigFilename = 'mod.client.mixins.json'
+def clientMixinPackage = "${modIdentity.mod_group_id}.client.mixin".toString()
+
+base {
+    archivesName.set(localResolvedModVersion.map { v ->
+        "${modIdentity.mod_id}-${v}-${minecraftVersion}_${loaderSegment}".toString()
+    })
+}
+
+// exclusiveContent scopes the Fabric maven to net.fabricmc.* artifacts so
+// other resolutions don't probe it. Patterned after Jared's MultiLoader-Template.
+repositories {
+    mavenCentral()
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'Fabric'
+                url = 'https://maven.fabricmc.net/'
+            }
+        }
+        filter { includeGroupAndSubgroups 'net.fabricmc' }
+    }
+}
+
+loom {
+    // MC 26.1.x ships unobfuscated. Loom 1.16.2's MinecraftMetadataProvider.isUnobfuscated()
+    // detects this via (versionMeta >= 2025-11-01 AND no client_mappings entry) and
+    // deliberately rejects officialMojangMappings(), layered{}, modImplementation,
+    // remapJar, and other obfuscation-era APIs. noIntermediateMappings() is the
+    // documented opt-in for "dev names == runtime names, no remap pipeline needed".
+    noIntermediateMappings()
+    splitEnvironmentSourceSets()
+    mods {
+        "herrshulker" {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+    // Loom 1.16+ runs DSL — VERIFIED via Task 4.2 (Spike B). The `server { server() }`
+    // call-method form is the documented pattern, but some Loom 1.16.x versions accept
+    // `server { server = true; client = false }`. If Task 4.2 finds the form differs,
+    // this block is updated accordingly. If runServer is unavailable, this block can
+    // be removed without breaking the rest of the convention.
+    runs {
+        server { server() }
+    }
+}
+
+// validateLocalVersion remains as `./gradlew validateLocalVersion` entry point.
+// The .get() call below triggers the .map validation defined above; no manual
+// regex check needed here.
+tasks.register('validateLocalVersion') {
+    group = 'verification'
+    description = 'Print the resolved sibling mod version (and trigger SemVer 2.0 validation).'
+    inputs.property 'resolvedVersion', localResolvedModVersion
+    doLast {
+        logger.lifecycle "Sibling mod version (validated): ${localResolvedModVersion.get()}"
+    }
+}
+
+fabricApi {
+    configureDataGeneration {
+        client = true
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraftVersion}"
+    // Unobfuscated MC 26.1.x: no `mappings` declaration. Loom's remap pipeline is
+    // disabled (see noIntermediateMappings() above). dev names == runtime names.
+
+    // modImplementation/include configurations are remap configurations that
+    // Loom does not create in unobfuscated environments. Use plain implementation.
+    implementation "net.fabricmc:fabric-loader:${fabricLoaderVersion}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}"
+
+    // KNOWN LIMITATION: plain implementation is NOT shaded into the jar —
+    // fabric-permissions-api must be present externally at runtime on 26.x.
+    // See 26x-known-limitations.md (Task 4.9).
+    implementation "me.lucko:fabric-permissions-api:${project.permissions_api_version}"
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir file('../../common/src/main/java')
+            srcDir file('../../fabric-common/src/main/java')
+        }
+        resources { srcDir file('../../common/src/main/resources') }
+    }
+    // splitEnvironmentSourceSets() (in loom{}) created the `client` sourceset; add the
+    // shared client-side glue identical across all Fabric targets.
+    client {
+        java {
+            srcDir file('../../fabric-common/src/client/java')
+        }
+    }
+}
+
+java {
+    sourceCompatibility = JavaVersion.toVersion(javaVersion)
+    targetCompatibility = JavaVersion.toVersion(javaVersion)
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(javaVersion)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = javaVersion
+    it.options.encoding = 'UTF-8'
+}
+
+// Build the fabric.mod.json + mixins.json expansion map ONCE as a Provider<Map>.
+// Single inputs.property declaration covers ALL keys consumed by expand() — no
+// drift possible between declared cache inputs and expanded template values.
+// All template-able loader resource filenames are exposed as expand variables
+// (mixin_config_filename, mixin_package, access_widener_filename) so source
+// templates reference them by name rather than hardcoded literals.
+def expansionProps = localResolvedModVersion.map { v ->
+    [
+        mod_version            : v,
+        mod_id                 : modIdentity.mod_id,
+        mod_group_id           : modIdentity.mod_group_id,
+        mod_name               : modIdentity.mod_name,
+        mod_description        : modIdentity.mod_description,
+        mod_authors            : modIdentity.mod_authors,
+        mod_license            : modIdentity.mod_license,
+        minecraft_version      : minecraftVersion,
+        minecraft_depends      : minecraftDepends,
+        java_version           : javaVersion,
+        fabric_loader_version  : fabricLoaderVersion,
+        mixin_config_filename        : mixinConfigFilename,
+        mixin_package                : mixinPackage,
+        client_mixin_config_filename : clientMixinConfigFilename,
+        client_mixin_package         : clientMixinPackage,
+        access_widener_filename      : accessWidenerFilename,
+    ]
+}
+
+// JSON-safe variant: see gradle/fabric-convention.gradle for the rationale.
+def jsonSafeExpansionProps = expansionProps.map { props ->
+    props.collectEntries { k, v ->
+        [(k): v instanceof String ? v.replace("\n", "\\\\n") : v]
+    }
+}
+
+processResources {
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+
+    inputs.property 'expansionProps', expansionProps
+
+    filesMatching(['fabric.mod.json', '*.mixins.json']) {
+        expand(jsonSafeExpansionProps.get())
+    }
+}
+
+jar {
+    archiveClassifier = ''
+}
+
+tasks.matching { it.name == 'sourcesJar' }.configureEach {
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+}
