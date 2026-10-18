@@ -5,7 +5,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 
 /**
  * Payload for syncing server config to clients.
@@ -17,7 +17,7 @@ public record ConfigSyncPayload(
 ) implements CustomPacketPayload {
 
     public static final Type<ConfigSyncPayload> TYPE =
-            new Type<>(ResourceLocation.fromNamespaceAndPath(HerrShulker.MOD_ID, "config_sync"));
+            new Type<>(Identifier.fromNamespaceAndPath(HerrShulker.MOD_ID, "config_sync"));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, ConfigSyncPayload> STREAM_CODEC =
             StreamCodec.composite(
