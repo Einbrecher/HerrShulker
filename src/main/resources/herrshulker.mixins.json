@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.tinkstav.herrshulker.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "AccessorShulkerBoxBlockEntity",
+    "MixinAnvilMenu",
+    "MixinDyeItem",
+    "MixinShulkerBoxBlock",
+    "MixinShulkerBoxBlockEntity"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
