@@ -21,20 +21,23 @@ def minecraftVersion = project.minecraft_version
 def fabricLoaderVersion = project.fabric_loader_version
 def javaVersion = Integer.parseInt(project.java_version)
 
-// Template-friendly derived names. All loader resource filenames follow the
+// Template-friendly derived names. Most loader resource filenames follow the
 // `${mod_id}.<suffix>` convention so a fork-and-rename only requires updating
 // mod_id (and the corresponding files in src/main/resources — see FORK-CHECKLIST.md).
 // The entrypoint class name is project-specific (no universal convention) and
 // lives literally in fabric.mod.json; only its package prefix (${mod_group_id})
 // is templated.
 def loaderSegment = 'fabric'
-// Generic, mod-id-independent resource filenames: a fork only edits mod_id in
-// gradle.properties — no physical resource-file rename needed (see FORK-CHECKLIST.md).
+// Mixin configs are mod-id-derived (${mod_id}.mixins.json, ${mod_id}.client.mixins.json):
+// Fabric registers mixin configs in a GLOBAL namespace keyed by filename, so a generic
+// name crashes startup when any sibling mod ships the same — `forkRename` moves the
+// physical files in lockstep. The access widener stays generic: Fabric loads each mod's
+// AW by the path in its own metadata, so there is no cross-mod filename collision to avoid.
 def accessWidenerFilename = 'mod.accesswidener'
-def mixinConfigFilename = 'mod.mixins.json'
+def mixinConfigFilename = "${modId}.mixins.json".toString()
 def mixinPackage = "${modGroupId}.mixin".toString()
 // HerrShulker is a client+server mod with separate mixin packages per side.
-def clientMixinConfigFilename = 'mod.client.mixins.json'
+def clientMixinConfigFilename = "${modId}.client.mixins.json".toString()
 def clientMixinPackage = "${modGroupId}.client.mixin".toString()
 
 base {

@@ -17,7 +17,9 @@
 //      decls, imports, the literal entrypoint FQNs in fabric.mod.json, accessor FQNs in
 //      *.mixins.json, translation keys, etc. Binary assets (e.g. icon.png) are skipped.
 //   4. ServiceLoader binding files (if any) under META-INF/services/.
-//   5. assets/<oldId>/ resource directories.
+//   5. Mixin config files <oldId>*.mixins.json -> <newId>*.mixins.json (filename is
+//      mod-id-derived; Fabric/Mixin need globally-unique config names across mods).
+//   6. assets/<oldId>/ resource directories.
 //
 // Deliberately left for the forker to do by hand:
 //   - Entrypoint CLASS names (HerrShulker / HerrShulkerClient / HerrShulkerDataGenerator):
@@ -128,6 +130,16 @@ tasks.register('forkRename') {
             exclude '**/build/**'
         }.files.collect { f -> [from: f, to: new File(f.parentFile, f.name.replace(oldGroup, newGroup))] })
 
+        // ---- 3b. Mixin-config file renames (filename is ${mod_id}-derived) ----
+        // Fabric/Mixin register configs in a GLOBAL namespace keyed by filename, so each
+        // physical <oldId>*.mixins.json file must move alongside the ${oldId} content
+        // rewrite above (covers <id>.mixins.json AND <id>.client.mixins.json).
+        def mixinRenames = (fileTree(rootDir) {
+            include '**/src/main/resources/' + oldId + '*.mixins.json',
+                    '**/src/client/resources/' + oldId + '*.mixins.json'
+            exclude '**/build/**'
+        }.files.collect { f -> [from: f, to: new File(f.parentFile, f.name.replace(oldId, newId))] })
+
         // ---- 4. assets/<oldId>/ directory moves ----
         def assetMoves = ((fileTree(rootDir) {
             include '**/src/main/resources/assets/' + oldId + '/**',
@@ -148,6 +160,8 @@ tasks.register('forkRename') {
         pkgMoves.each { logger.lifecycle("    ${rel(it.from)}  ->  ${rel(it.to)}") }
         logger.lifecycle("  service renames: ${serviceRenames.size()}")
         serviceRenames.each { logger.lifecycle("    ${rel(it.from)}  ->  ${rel(it.to)}") }
+        logger.lifecycle("  mixin renames: ${mixinRenames.size()}")
+        mixinRenames.each { logger.lifecycle("    ${rel(it.from)}  ->  ${rel(it.to)}") }
         logger.lifecycle("  assets moves: ${assetMoves.size()}")
         assetMoves.each { logger.lifecycle("    ${rel(it.from)}  ->  ${rel(it.to)}") }
 
@@ -169,6 +183,7 @@ tasks.register('forkRename') {
             cleanupEmptyParents(m.from.parentFile, m.root)
         }
         serviceRenames.each { r -> Files.move(r.from.toPath(), r.to.toPath()) }
+        mixinRenames.each { r -> Files.move(r.from.toPath(), r.to.toPath()) }
         assetMoves.each { a -> Files.move(a.from.toPath(), a.to.toPath()) }
 
         logger.lifecycle("[forkRename] Done. Next steps:")

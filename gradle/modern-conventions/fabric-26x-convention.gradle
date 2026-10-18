@@ -172,12 +172,13 @@ def javaVersion = Integer.parseInt(project.java_version)
 
 // Template-friendly derived names (mirrors gradle/fabric-convention.gradle).
 def loaderSegment = 'fabric'
-// Generic, mod-id-independent resource filenames (mirrors gradle/fabric-convention.gradle).
+// Access widener stays generic; mixin configs are mod-id-derived to stay globally unique
+// (mirrors gradle/fabric-convention.gradle — see FORK-CHECKLIST.md).
 def accessWidenerFilename = 'mod.accesswidener'
-def mixinConfigFilename = 'mod.mixins.json'
+def mixinConfigFilename = "${modIdentity.mod_id}.mixins.json".toString()
 def mixinPackage = "${modIdentity.mod_group_id}.mixin".toString()
 // HerrShulker is a client+server mod with separate mixin packages per side.
-def clientMixinConfigFilename = 'mod.client.mixins.json'
+def clientMixinConfigFilename = "${modIdentity.mod_id}.client.mixins.json".toString()
 def clientMixinPackage = "${modIdentity.mod_group_id}.client.mixin".toString()
 
 base {
